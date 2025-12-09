@@ -1,0 +1,13 @@
+# Core dependencies
+pandas==2.1.4
+openpyxl==3.1.2
+python-dotenv==1.0.0
+
+# Selenium for web automation
+selenium==4.16.0
+
+# Windows COM automation (Outlook)
+pywin32==306
+
+# HTTP requests (Teams webhook)
+requests==2.31.0
