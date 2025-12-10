@@ -117,10 +117,18 @@ class RespostorEmails:
     def responder_emails(self, dados_validacao: list):
         try:
             emails_respondidos = 0
+            emails_ignorados = 0
             agora = datetime.now()
             
             for validacao in dados_validacao:
                 cliente = validacao["Cliente"]
+                status = validacao["Status"]
+                
+                # NOVA LÓGICA: Só processa e-mails com status OK
+                if status != "✓ OK":
+                    logger.info(f"⚠️ Cliente {cliente} com DIVERGÊNCIA - e-mail NÃO será respondido")
+                    emails_ignorados += 1
+                    continue
                 
                 email_encontrado = False
                 
@@ -153,10 +161,8 @@ class RespostorEmails:
                         
                         logger.info(f"E-mail encontrado para cliente: {cliente}")
                         
-                        if validacao["Status"] == "✓ OK":
-                            self._enviar_resposta_ok(item, validacao)
-                        else:
-                            self._enviar_resposta_divergencia(item, validacao)
+                        # Só envia resposta se for OK (sempre será neste ponto)
+                        self._enviar_resposta_ok(item, validacao)
                         
                         self._mover_email(item, cliente)
                         
@@ -172,6 +178,7 @@ class RespostorEmails:
                     logger.warning(f"E-mail não encontrado para cliente: {cliente}")
             
             logger.info(f"✓ {emails_respondidos} e-mail(s) respondido(s) com sucesso")
+            logger.info(f"⚠️ {emails_ignorados} e-mail(s) com divergência (não respondidos)")
         
         except Exception as e:
             logger.error(f"✗ Erro ao responder e-mails: {e}")
@@ -269,33 +276,4 @@ Att."""
         except Exception as e:
             logger.error(f"✗ Erro ao enviar resposta OK: {e}")
     
-    def _enviar_resposta_divergencia(self, item_original, resultado):
-        try:
-            reply = item_original.ReplyAll()
-            
-            cliente = resultado["Cliente"]
-            total_exibicao = resultado["Total_Exibicao"]  # Sempre mostra TOTAL em divergência
-            total_ga = resultado["Total_GA"]
-            diferenca = abs(total_exibicao - total_ga)
-            
-            corpo = f"""Bom dia,
-
-ATENÇÃO: Divergência detectada na validação do cliente {cliente}.
-
-Detalhes:
-- Total Email: {total_exibicao}
-- Total GA: {total_ga}
-- Diferença: {diferenca}
-- Status: ✗ DIVERGÊNCIA
-
-Por favor, poderiam validar?
-
-Att."""
-            
-            reply.Body = corpo
-            reply.Send()
-            
-            logger.info(f"✗ Resposta DIVERGÊNCIA enviada para {cliente}")
-        
-        except Exception as e:
-            logger.error(f"✗ Erro ao enviar resposta divergência: {e}")
+    # Método _enviar_resposta_divergencia REMOVIDO - Não é mais usado
