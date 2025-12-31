@@ -1,11 +1,14 @@
-# ======================== respostas.py ========================
+# ======================== respostas.py (atualizado) ========================
 
 import win32com.client
 import logging
 from datetime import datetime
 import unicodedata
+import re
 
 logger = logging.getLogger(__name__)
+
+# ============= FUNÇÕES AUXILIARES =============
 
 def normalizar_texto(texto: str) -> str:
     nfd = unicodedata.normalize('NFD', texto)
@@ -45,6 +48,46 @@ def contem_validacao(texto: str) -> bool:
         return True
     
     return False
+
+def contem_kit(texto: str) -> bool:
+    """
+    Verifica se o texto contém "KIT" com variações de separadores.
+    Aceita: KIT, _KIT, -KIT, KIT_, -KIT-, _KIT_, etc.
+    """
+    texto_normalizado = normalizar_texto(texto)
+    
+    # Remove espaços e caracteres especiais ao redor de KIT
+    # Procura por KIT com qualquer separador antes/depois ou sozinho
+    padrao = r'[_\-\s]*KIT[_\-\s]*'
+    
+    if re.search(padrao, texto_normalizado):
+        return True
+    
+    return False
+
+def identificar_tipo_alelo(subject: str, corpo: str = "") -> str:
+    """
+    Identifica se é ALELO-KIT, ALELO normal ou outro cliente.
+    Retorna: "ALELO-KIT", "ALELO", ou None
+    """
+    subject_norm = normalizar_texto(subject)
+    corpo_norm = normalizar_texto(corpo) if corpo else ""
+    
+    # Verifica se tem ALELO no subject ou corpo
+    tem_alelo = "ALELO" in subject_norm or "ALELO" in corpo_norm
+    
+    if not tem_alelo:
+        return None
+    
+    # Verifica se tem KIT usando a função flexível
+    tem_kit = contem_kit(subject)
+    
+    if tem_kit:
+        logger.info(f"🎯 ALELO-KIT detectado no título: {subject}")
+        return "ALELO-KIT"
+    else:
+        logger.info(f"🎯 ALELO normal detectado no título: {subject}")
+        return "ALELO"
 
 class RespostorEmails:
     
@@ -154,12 +197,35 @@ class RespostorEmails:
                             logger.info(f"E-mail do cliente {cliente} já foi respondido. Ignorando.")
                             continue
                         
-                        if cliente.upper() not in subject.upper():
-                            corpo = item.Body if hasattr(item, 'Body') else ""
-                            if cliente.upper() not in corpo.upper():
+                        # NOVA LÓGICA: Verifica se o e-mail corresponde ao cliente
+                        corpo = item.Body if hasattr(item, 'Body') else ""
+                        
+                        # Identifica o tipo de ALELO do e-mail
+                        tipo_alelo_email = identificar_tipo_alelo(subject, corpo)
+                        
+                        # Verifica se o cliente da validação é ALELO
+                        cliente_upper = cliente.upper()
+                        
+                        # Match para ALELO-KIT
+                        if cliente_upper == "ALELO-KIT":
+                            if tipo_alelo_email == "ALELO-KIT":
+                                logger.info(f"✓ E-mail ALELO-KIT encontrado para validação: {cliente}")
+                            else:
                                 continue
                         
-                        logger.info(f"E-mail encontrado para cliente: {cliente}")
+                        # Match para ALELO normal
+                        elif "ALELO" in cliente_upper and "KIT" not in cliente_upper:
+                            if tipo_alelo_email == "ALELO":
+                                logger.info(f"✓ E-mail ALELO normal encontrado para validação: {cliente}")
+                            else:
+                                continue
+                        
+                        # Match para outros clientes
+                        else:
+                            if cliente_upper not in subject.upper() and cliente_upper not in corpo.upper():
+                                continue
+                        
+                        logger.info(f"📧 E-mail encontrado para cliente: {cliente}")
                         
                         # Só envia resposta se for OK (sempre será neste ponto)
                         self._enviar_resposta_ok(item, validacao)
@@ -175,7 +241,7 @@ class RespostorEmails:
                         continue
                 
                 if not email_encontrado:
-                    logger.warning(f"E-mail não encontrado para cliente: {cliente}")
+                    logger.warning(f"⚠️ E-mail não encontrado para cliente: {cliente}")
             
             logger.info(f"✓ {emails_respondidos} e-mail(s) respondido(s) com sucesso")
             logger.info(f"⚠️ {emails_ignorados} e-mail(s) com divergência (não respondidos)")
@@ -246,11 +312,11 @@ class RespostorEmails:
 Validação concluída com SUCESSO para o cliente {cliente}.
 
 Detalhes:
-- Total Email: {total_exibicao} (calculado automaticamente)
+- Total Email: {total_exibicao}
 - Total GA: {total_ga}
 - Status: ✓ OK
 
-Obs: O total informado no email estava divergente, mas a soma das linhas conferiu corretamente.
+A validação foi processada corretamente.
 
 Att."""
             else:
@@ -275,5 +341,3 @@ Att."""
         
         except Exception as e:
             logger.error(f"✗ Erro ao enviar resposta OK: {e}")
-    
-    # Método _enviar_resposta_divergencia REMOVIDO - Não é mais usado

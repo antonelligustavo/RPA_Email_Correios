@@ -82,31 +82,43 @@ class GerenciadorPlanilhas:
                 soma_ok = (total_soma == total_ga)
                 informado_ok = (total_informado == total_ga)
                 
-                # Define qual valor será mostrado no FRONTEND
+                # CORREÇÃO: Define valor de exibição de forma inteligente
                 if informado_ok:
                     # Se TOTAL informado está correto, usa ele
                     valor_exibicao = total_informado
                     metodo_validacao = "TOTAL"
                     status = "✓ OK"
                     logger.info(f"   ✅ Validado por TOTAL informado")
+                    
                 elif soma_ok:
                     # Se TOTAL está errado mas SOMA está certa, usa SOMA
                     valor_exibicao = total_soma
                     metodo_validacao = "SOMA (TOTAL divergente)"
                     status = "✓ OK"
                     logger.info(f"   ✅ Validado por SOMA (TOTAL estava errado)")
+                    
                 else:
-                    # Ambos divergem, mantém TOTAL
-                    valor_exibicao = total_informado
+                    # ⚠️ CORREÇÃO PARA DIVERGÊNCIAS:
+                    # Prioridade: SOMA > INFORMADO (se SOMA existir)
+                    # Isso garante que sempre mostre o valor real extraído do email
+                    if total_soma > 0:
+                        valor_exibicao = total_soma
+                        logger.info(f"   ⚠️ Divergência! Exibindo SOMA: {total_soma}")
+                    elif total_informado > 0:
+                        valor_exibicao = total_informado
+                        logger.info(f"   ⚠️ Divergência! Exibindo TOTAL: {total_informado}")
+                    else:
+                        valor_exibicao = 0
+                        logger.warning(f"   ❌ Divergência! Ambos são zero!")
+                    
                     metodo_validacao = "Nenhum"
                     status = "✗ DIVERGÊNCIA"
-                    logger.warning(f"   ❌ Nenhum valor bateu com GA!")
                 
                 dados_validacao.append({
                     "Cliente": cliente,
                     "Total_Soma": total_soma,  # Mantém no backend para logs
                     "Total_Informado": total_informado,  # Mantém no backend para logs
-                    "Total_Exibicao": valor_exibicao,  # Valor mostrado no frontend
+                    "Total_Exibicao": valor_exibicao,  # ⭐ Valor mostrado no frontend
                     "Total_GA": total_ga,
                     "Metodo_Validacao": metodo_validacao,
                     "Status": status
@@ -165,7 +177,7 @@ class GerenciadorPlanilhas:
             
             for item in dados_validacao:
                 cliente = item["Cliente"]
-                total_exibicao = item["Total_Exibicao"]  # Frontend usa este valor
+                total_exibicao = item["Total_Exibicao"]  # ⭐ Agora sempre pega SOMA em caso de divergência
                 total_ga = item["Total_GA"]
                 status = item["Status"]
                 metodo = item["Metodo_Validacao"]
@@ -179,7 +191,7 @@ class GerenciadorPlanilhas:
                         valor_texto = f"Email: {total_exibicao} | GA: {total_ga}"
                 else:
                     icone_status = "❌"
-                    # Em divergência, sempre mostra TOTAL
+                    # ⭐ Em divergência, agora sempre mostra o valor correto (SOMA prioritária)
                     valor_texto = f"Email: {total_exibicao} | GA: {total_ga} ⚠️"
                 
                 facts_adaptive.append({

@@ -42,9 +42,23 @@ def contem_validacao(texto: str) -> bool:
             return True
     
     # Busca mais genérica: palavras que começam com VAL e terminam com CAO
-    # Isso pega variações como VALDCAO, VALIDCAO, etc.
-    import re
     if re.search(r'VAL[DI]*[DA]*C[AÃ]*O', texto_normalizado):
+        return True
+    
+    return False
+
+def contem_kit(texto: str) -> bool:
+    """
+    Verifica se o texto contém "KIT" com variações de separadores.
+    Aceita: KIT, _KIT, -KIT, KIT_, -KIT-, _KIT_, " KIT", "KIT ", etc.
+    """
+    texto_normalizado = normalizar_texto(texto)
+    
+    # Remove espaços e caracteres especiais ao redor de KIT
+    # Procura por KIT com qualquer separador antes/depois ou sozinho
+    padrao = r'[_\-\s]*KIT[_\-\s]*'
+    
+    if re.search(padrao, texto_normalizado):
         return True
     
     return False
@@ -143,8 +157,17 @@ class ColetorEmails:
             
             corpo = self._extrair_corpo_email(item)
             
-            if "ALELO" in subject.upper():
+            # NOVA LÓGICA: Detecta ALELO-KIT usando função flexível
+            subject_norm = normalizar_texto(subject)
+            tem_alelo = "ALELO" in subject_norm
+            tem_kit = contem_kit(subject)  # Usa a nova função flexível
+            
+            if tem_alelo and tem_kit:
+                cliente = "ALELO-KIT"
+                logger.info(f"📧 Detectado ALELO-KIT no título: {subject}")
+            elif tem_alelo and not tem_kit:
                 cliente = self._extrair_cliente_subject(subject)
+                logger.info(f"📧 Detectado ALELO normal no título: {subject}")
             else:
                 cliente = self._extrair_cliente(corpo)
             

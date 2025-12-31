@@ -1,4 +1,4 @@
-# ======================== ga.py ========================
+# ======================== ga.py (atualizado) ========================
 
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -88,10 +88,17 @@ class ExtratorGA:
         try:
             logger.info(f"Extraindo relatório para: {cliente}")
             
+            # NOVO: Detecta ALELO-KIT e busca com filtro correto
             termo_busca = cliente
-            if "ALELO" in cliente.upper():
+            is_alelo_kit = (cliente.upper() == "ALELO-KIT")
+            is_alelo_normal = ("ALELO" in cliente.upper() and not is_alelo_kit)
+            
+            if is_alelo_kit:
                 termo_busca = "ELO-RE"
-                logger.info(f"Cliente ALELO detectado. Buscando por: {termo_busca}")
+                logger.info(f"🎯 ALELO-KIT detectado. Buscando por: {termo_busca} (filtro: COM _KIT)")
+            elif is_alelo_normal:
+                termo_busca = "ELO-RE"
+                logger.info(f"🎯 ALELO normal detectado. Buscando por: {termo_busca} (filtro: SEM _KIT)")
             
             campo_pesquisa = self.wait.until(
                 EC.presence_of_element_located((By.CSS_SELECTOR, "input[aria-controls='dataTableBuilder']"))
@@ -110,7 +117,7 @@ class ExtratorGA:
             logger.info("Download iniciado...")
             time.sleep(7)
             
-            resultado = self._processar_arquivo_excel(cliente)
+            resultado = self._processar_arquivo_excel(cliente, is_alelo_kit, is_alelo_normal)
             
             return resultado
         
@@ -118,7 +125,7 @@ class ExtratorGA:
             logger.error(f"✗ Erro ao extrair relatório para {cliente}: {e}")
             return {'total': 0}
     
-    def _processar_arquivo_excel(self, cliente: str) -> dict:
+    def _processar_arquivo_excel(self, cliente: str, is_alelo_kit: bool, is_alelo_normal: bool) -> dict:
         try:
             arquivo = self._obter_arquivo_recente()
             
@@ -137,9 +144,6 @@ class ExtratorGA:
             df = pd.read_excel(arquivo_path)
             logger.info(f"Arquivo carregado com {len(df)} linhas e {df.shape[1]} colunas")
             
-            is_alelo = "ALELO" in cliente.upper() and "KIT" not in cliente.upper()
-            is_alelo_kit = "ALELO" in cliente.upper() and "KIT" in cliente.upper()
-            
             if df.shape[1] >= 7:
                 coluna_c = df.iloc[:, 2]
                 coluna_d = df.iloc[:, 3]
@@ -148,25 +152,28 @@ class ExtratorGA:
                 
                 filtro_base = (coluna_g.astype(str).str.upper() == "ENTREGUE") & (~coluna_d.astype(str).str.contains(".SD1", case=False, na=False))
                 
-                if is_alelo:
-                    filtro_alelo = filtro_base & (~coluna_c.astype(str).str.contains("_KIT", case=False, na=False))
-                    total = int(coluna_e[filtro_alelo].sum())
+                if is_alelo_kit:
+                    # ALELO-KIT: Filtra COM _KIT
+                    filtro_kit = filtro_base & (coluna_c.astype(str).str.contains("_KIT", case=False, na=False))
+                    total = int(coluna_e[filtro_kit].sum())
                     
-                    logger.info(f"ALELO Normal (sem _KIT): {total}")
+                    logger.info(f"✅ ALELO-KIT (com _KIT): {total}")
                     self.arquivos_processados.append(arquivo)
                     
                     return {'total': total}
                 
-                elif is_alelo_kit:
-                    filtro_kit = filtro_base & (coluna_c.astype(str).str.contains("_KIT", case=False, na=False))
-                    total = int(coluna_e[filtro_kit].sum())
+                elif is_alelo_normal:
+                    # ALELO normal: Filtra SEM _KIT
+                    filtro_alelo = filtro_base & (~coluna_c.astype(str).str.contains("_KIT", case=False, na=False))
+                    total = int(coluna_e[filtro_alelo].sum())
                     
-                    logger.info(f"ALELO-KIT (com _KIT): {total}")
+                    logger.info(f"✅ ALELO Normal (sem _KIT): {total}")
                     self.arquivos_processados.append(arquivo)
                     
                     return {'total': total}
                 
                 else:
+                    # Outros clientes: Sem filtro especial
                     total = int(coluna_e[filtro_base].sum())
                     
                     logger.info(f"Total somado da coluna E: {total}")
